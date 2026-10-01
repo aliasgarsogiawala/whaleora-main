@@ -10,6 +10,12 @@ import type { CatalogProduct } from '@/lib/shopify/catalog';
 import type { Testimonial, VideoReview } from '@/lib/content/types';
 import { formatPrice } from '@/data/products';
 
+declare global {
+  interface Window {
+    fbq: any;
+  }
+}
+
 function MediaDialog({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -70,33 +76,74 @@ export function ProductPurchase({ product, rating, children }: { product: Catalo
   const purchase = useRef<HTMLDivElement>(null);
   const variants = product.shopify?.variants || [];
   const variant = variants.find((item) => item.id === variantId);
-  // An admin price override stands for every variant; without one each variant carries its own Shopify price.
   const chosen: CatalogProduct = variant && product.shopify ? { ...product, price: product.priceOverridden ? product.price : variant.price, currencyCode: variant.currencyCode, shopify: { ...product.shopify, variantId: variant.id, availableForSale: variant.availableForSale, compareAtPrice: variant.compareAtPrice } } : product;
   const total = chosen.price * quantity;
   const compareAt = chosen.shopify?.compareAtPrice;
   const onQuantity = (value: number) => { if (Number.isFinite(value)) setQuantity(Math.max(1, Math.min(10, Math.trunc(value)))); };
+  
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => setShowSticky(!entry.isIntersecting && entry.boundingClientRect.top < 0), { threshold: 0 });
     if (purchase.current) observer.observe(purchase.current);
     return () => observer.disconnect();
   }, []);
 
+  // 1. META PIXEL: ViewContent Event
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.fbq) {
+      window.fbq('track', 'ViewContent', {
+        content_ids: [product.id],
+        content_name: product.title,
+        content_type: 'product',
+        value: product.price,
+        currency: product.currencyCode || 'INR'
+      });
+    }
+  }, [product.id, product.title, product.price, product.currencyCode]);
+
+  // 2. META PIXEL: AddToCart Event Logic
+  const handleAddToCart = () => {
+    if (typeof window !== 'undefined' && window.fbq) {
+      window.fbq('track', 'AddToCart', {
+        content_ids: [chosen.id],
+        content_name: chosen.title,
+        content_type: 'product',
+        value: total,
+        currency: chosen.currencyCode || 'INR',
+        num_items: quantity
+      });
+    }
+  };
+
   return <><div className="pdp-purchase">
     <p className="pdp-category">{product.label}</p><h1>{product.title}</h1>
-    {/* Rendered on the server and passed down, so the rating panel's markup
-        stays out of this client bundle. */}
     {rating}
     <p className="pdp-purchase-description">{product.longDescription}</p>
     <ul className="pdp-benefit-list">{product.features.slice(0, 3).map((feature) => <li key={feature}><Check size={15} aria-hidden="true" />{feature}</li>)}</ul>
     <fieldset className="pdp-set-picker"><legend>Choose your set</legend><div>{[1, 2, 4].map((count) => <label key={count} className={quantity === count ? 'selected' : ''}><input type="radio" name={`set-${product.id}`} value={count} checked={quantity === count} onChange={() => setQuantity(count)} /><strong>{count === 1 ? 'Single' : count === 2 ? 'Duo' : 'Four-piece set'}</strong><span>{formatPrice(chosen.price * count, chosen.currencyCode)}</span><small>{count} {count === 1 ? 'item' : 'items'}</small></label>)}</div><p>Same per-item price. Choose how many you need.</p></fieldset>
     {variants.length > 1 && <fieldset className="pdp-variant-picker"><legend>Choose your option: <span>{variant?.title}</span></legend><div>{variants.map((item) => <label key={item.id} className={variantId === item.id ? 'selected' : ''}><input type="radio" name={`variant-${product.id}`} checked={variantId === item.id} onChange={() => setVariantId(item.id)} /><span>{item.title}{!item.availableForSale && ' · Sold out'}</span></label>)}</div></fieldset>}
     <div className="pdp-order-row"><div className="pdp-quantity"><span>Quantity</span><div><button type="button" aria-label="Decrease quantity" disabled={quantity <= 1} onClick={() => onQuantity(quantity - 1)}><Minus size={15} /></button><input type="number" inputMode="numeric" min={1} max={10} step={1} value={quantity} onChange={(event) => onQuantity(Number(event.target.value))} aria-label="Quantity" /><button type="button" aria-label="Increase quantity" disabled={quantity >= 10} onClick={() => onQuantity(quantity + 1)}><Plus size={15} /></button></div></div><div className="pdp-order-total" aria-live="polite"><strong>{formatPrice(total, chosen.currencyCode)}</strong>{compareAt && compareAt > chosen.price ? <s>{formatPrice(compareAt * quantity, chosen.currencyCode)}</s> : null}<small>Inclusive of all taxes</small></div></div>
-    <div ref={purchase} className="pdp-primary-purchase"><AddToCartButton product={chosen} quantity={quantity} label="Add to cart" /></div>
+    
+    {/* ADDED EVENT HERE: Primary Add to Cart Button */}
+    <div ref={purchase} className="pdp-primary-purchase" onClick={handleAddToCart}>
+      <AddToCartButton product={chosen} quantity={quantity} label="Add to cart" />
+    </div>
+    
     <div className="pdp-purchase-assurances"><span><ShieldCheck size={17} />Shopify checkout</span><span><Truck size={17} />Ships across India</span><span><RotateCcw size={17} />7-day returns</span><span><Headphones size={17} />Human support</span></div>
     <p className="pdp-shipping-note">{chosen.currencyCode === 'INR' && total >= 1499 ? 'This set qualifies for free shipping.' : 'Free shipping on orders over ₹1,499.'} Delivery estimate shown at checkout.</p>
     <div className="pdp-support-promise"><Headphones size={24} strokeWidth={1.5} /><div><strong>Help when you need it.</strong><p>A question about your order? <Link href="/contact">Talk to our team.</Link></p></div></div>
     {children}
     <details className="pdp-quick-detail"><summary>Good to know before you buy <Plus size={17} /></summary><p>{product.compare.caveat !== '—' ? product.compare.caveat : product.shortDescription}</p><p>A safety tool can help draw attention or create time. It cannot guarantee an outcome.</p></details>
   </div>
-  <div className={`pdp-sticky-purchase ${showSticky ? 'is-visible' : ''}`} aria-hidden={!showSticky} inert={!showSticky}><div className="shell"><div><strong>{product.title}</strong><span>{quantity} {quantity === 1 ? 'item' : 'items'} · {formatPrice(total, chosen.currencyCode)}</span></div><AddToCartButton product={chosen} quantity={quantity} label="Add to cart" /></div></div></>;
+  
+  <div className={`pdp-sticky-purchase ${showSticky ? 'is-visible' : ''}`} aria-hidden={!showSticky} inert={!showSticky}>
+    <div className="shell">
+      <div><strong>{product.title}</strong><span>{quantity} {quantity === 1 ? 'item' : 'items'} · {formatPrice(total, chosen.currencyCode)}</span></div>
+      
+      {/* ADDED EVENT HERE: Sticky Add to Cart Button */}
+      <div onClick={handleAddToCart}>
+        <AddToCartButton product={chosen} quantity={quantity} label="Add to cart" />
+      </div>
+      
+    </div>
+  </div></>;
 }
