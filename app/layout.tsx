@@ -114,7 +114,19 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             />
           </noscript>
           {/* END META PIXEL CODE */}
-
+{/* GOOGLE ANALYTICS 4 */}
+<Script 
+  strategy="afterInteractive" 
+  src="https://www.googletagmanager.com/gtag/js?id=G-FZG0ZTF4NM" 
+/>
+<Script id="google-analytics" strategy="afterInteractive">
+  {`
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-FZG0ZTF4NM');
+  `}
+</Script>
           {/* --- NEW: Invisible Schema Injection --- */}
           <script
             type="application/ld+json"
