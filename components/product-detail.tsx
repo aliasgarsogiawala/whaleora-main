@@ -15,6 +15,12 @@ declare global {
     fbq: any;
   }
 }
+declare global {
+  interface Window {
+    fbq: any;
+    gtag: any; // ADD THIS FOR GOOGLE
+  }
+}
 
 function MediaDialog({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -98,6 +104,18 @@ export function ProductPurchase({ product, rating, children }: { product: Catalo
         currency: product.currencyCode || 'INR'
       });
     }
+    // Google
+    if (window.gtag) {
+      window.gtag('event', 'view_item', {
+        currency: product.currencyCode || 'INR',
+        value: product.price,
+        items: [{
+          item_id: product.id,
+          item_name: product.title,
+          price: product.price
+        }]
+      });
+    }
   }, [product.id, product.title, product.price, product.currencyCode]);
 
   // 2. META PIXEL: AddToCart Event Logic
@@ -110,6 +128,19 @@ export function ProductPurchase({ product, rating, children }: { product: Catalo
         value: total,
         currency: chosen.currencyCode || 'INR',
         num_items: quantity
+      });
+    }
+    // Google
+    if (window.gtag) {
+      window.gtag('event', 'add_to_cart', {
+        currency: chosen.currencyCode || 'INR',
+        value: total,
+        items: [{
+          item_id: chosen.id,
+          item_name: chosen.title,
+          price: chosen.price,
+          quantity: quantity
+        }]
       });
     }
   };
