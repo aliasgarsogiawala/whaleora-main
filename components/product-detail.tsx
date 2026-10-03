@@ -9,12 +9,8 @@ import { AddToCartButton } from '@/components/commerce';
 import type { CatalogProduct } from '@/lib/shopify/catalog';
 import type { Testimonial, VideoReview } from '@/lib/content/types';
 import { formatPrice } from '@/data/products';
+import { sendAddToCartCAPI } from '@/app/actions/meta-capi';
 
-declare global {
-  interface Window {
-    fbq: any;
-  }
-}
 declare global {
   interface Window {
     fbq: any;
@@ -93,56 +89,73 @@ export function ProductPurchase({ product, rating, children }: { product: Catalo
     return () => observer.disconnect();
   }, []);
 
-  // 1. META PIXEL: ViewContent Event
+  // 1. META & GOOGLE PIXEL: ViewContent Event
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.fbq) {
-      window.fbq('track', 'ViewContent', {
-        content_ids: [product.id],
-        content_name: product.title,
-        content_type: 'product',
-        value: product.price,
-        currency: product.currencyCode || 'INR'
-      });
-    }
-    // Google
-    if (window.gtag) {
-      window.gtag('event', 'view_item', {
-        currency: product.currencyCode || 'INR',
-        value: product.price,
-        items: [{
-          item_id: product.id,
-          item_name: product.title,
-          price: product.price
-        }]
-      });
+    if (typeof window !== 'undefined') {
+      if (window.fbq) {
+        window.fbq('track', 'ViewContent', {
+          content_ids: [product.shopify?.variantId?.split('/').pop() || product.id],
+          content_name: product.title,
+          content_type: 'product',
+          value: product.price,
+          currency: product.currencyCode || 'INR'
+        });
+      }
+      if (window.gtag) {
+        window.gtag('event', 'view_item', {
+          currency: product.currencyCode || 'INR',
+          value: product.price,
+          items: [{
+            item_id: product.id,
+            item_name: product.title,
+            price: product.price
+          }]
+        });
+      }
     }
   }, [product.id, product.title, product.price, product.currencyCode]);
 
-  // 2. META PIXEL: AddToCart Event Logic
+  // 2. META CAPI & GOOGLE PIXEL: AddToCart Event Logic
   const handleAddToCart = () => {
-    if (typeof window !== 'undefined' && window.fbq) {
-      window.fbq('track', 'AddToCart', {
-        content_ids: [chosen.id],
-        content_name: chosen.title,
-        content_type: 'product',
-        value: total,
-        currency: chosen.currencyCode || 'INR',
-        num_items: quantity
-      });
+    // Generate a unique ID for Meta deduplication
+    const eventId = crypto.randomUUID();
+
+    if (typeof window !== 'undefined') {
+      // Browser Meta Event (with eventID)
+      if (window.fbq) {
+        window.fbq('track', 'AddToCart', {
+          content_ids: [chosen.shopify?.variantId?.split('/').pop() || chosen.id],
+content_name: chosen.title,
+          content_type: 'product',
+          value: total,
+          currency: chosen.currencyCode || 'INR',
+          num_items: quantity
+        }, { eventID: eventId });
+      }
+      
+      // Google Event
+      if (window.gtag) {
+        window.gtag('event', 'add_to_cart', {
+          currency: chosen.currencyCode || 'INR',
+          value: total,
+          items: [{
+            item_id: chosen.id,
+            item_name: chosen.title,
+            price: chosen.price,
+            quantity: quantity
+          }]
+        });
+      }
     }
-    // Google
-    if (window.gtag) {
-      window.gtag('event', 'add_to_cart', {
-        currency: chosen.currencyCode || 'INR',
-        value: total,
-        items: [{
-          item_id: chosen.id,
-          item_name: chosen.title,
-          price: chosen.price,
-          quantity: quantity
-        }]
-      });
-    }
+
+    // Server Meta Event (CAPI)
+    sendAddToCartCAPI({
+      eventId: eventId,
+      productId: chosen.id,
+      productName: chosen.title,
+      value: total,
+      currency: chosen.currencyCode || 'INR'
+    });
   };
 
   return <><div className="pdp-purchase">

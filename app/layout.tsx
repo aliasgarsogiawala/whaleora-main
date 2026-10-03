@@ -4,15 +4,15 @@ import { ConvexAuthNextjsServerProvider } from '@convex-dev/auth/nextjs/server';
 import { ConvexClientProvider } from '@/components/convex-provider';
 import { SiteFrame } from '@/components/site-frame';
 import { Analytics } from '@vercel/analytics/next';
-import Script from 'next/script'; // 1. ADD THIS IMPORT
+import Script from 'next/script';
 import './globals.css';
 import './card-refinements.css';
 import './review-videos.css';
 import './compact-scale.css';
 import './faq-bot.css';
+import { Suspense } from 'react';
+import { PageViewTracker } from '@/components/commerce';
 
-// Lora ships as a variable font: omitting `weight` gives the full 400–700 axis
-// in one file, which is what whaleora.vercel.app serves.
 const display = Lora({ variable: '--font-display', subsets: ['latin'], style: ['normal', 'italic'], display: 'swap' });
 const sans = Geist({ variable: '--font-sans', subsets: ['latin'] });
 
@@ -38,7 +38,6 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  // --- NEW: Comprehensive Global Brand Entity & WebSite Schema ---
   const organizationSchema = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -89,7 +88,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <html lang="en">
         <body suppressHydrationWarning className={`${display.variable} ${sans.variable}`}>
           
-          {/* 2. ADD YOUR META PIXEL CODE HERE */}
+          <Suspense fallback={null}>
+            <PageViewTracker />
+          </Suspense>
+
           <Script id="meta-pixel" strategy="afterInteractive">
             {`
               !function(f,b,e,v,n,t,s)
@@ -101,7 +103,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               s.parentNode.insertBefore(t,s)}(window, document,'script',
               'https://connect.facebook.net/en_US/fbevents.js');
               fbq('init', '1582783572864894');
-              fbq('track', 'PageView');
             `}
           </Script>
           <noscript>
@@ -109,25 +110,24 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               height="1" 
               width="1" 
               style={{ display: 'none' }}
-              src="https://www.facebook.com/tr?id=1582783572864894_ID&ev=PageView&noscript=1"
+              src="https://www.facebook.com/tr?id=1582783572864894&ev=PageView&noscript=1"
               alt=""
             />
           </noscript>
-          {/* END META PIXEL CODE */}
-{/* GOOGLE ANALYTICS 4 */}
-<Script 
-  strategy="afterInteractive" 
-  src="https://www.googletagmanager.com/gtag/js?id=G-FZG0ZTF4NM" 
-/>
-<Script id="google-analytics" strategy="afterInteractive">
-  {`
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-FZG0ZTF4NM');
-  `}
-</Script>
-          {/* --- NEW: Invisible Schema Injection --- */}
+
+          <Script 
+            strategy="afterInteractive" 
+            src="https://www.googletagmanager.com/gtag/js?id=G-FZG0ZTF4NM" 
+          />
+          <Script id="google-analytics" strategy="afterInteractive">
+            {`
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', 'G-FZG0ZTF4NM');
+            `}
+          </Script>
+
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
@@ -136,8 +136,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <ConvexClientProvider>
             <SiteFrame>{children}</SiteFrame>
           </ConvexClientProvider>
-          {/* Cookieless page analytics. Sends nothing when running outside a
-              Vercel deployment, so local work does not report as traffic. */}
+          
           <Analytics />
         </body>
       </html>

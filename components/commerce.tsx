@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { ProductImage } from '@/components/product-image';
 import Link from 'next/link';
 import { ArrowRight, ArrowUpRight, Plus, ShoppingCart } from 'lucide-react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from 'react';
 import { AccountLink } from '@/components/account-link';
 import { addToCartAction, getCartAction, removeCartLineAction, updateCartLineAction } from '@/app/actions/cart';
@@ -17,6 +17,14 @@ import { formatPrice, products, PRODUCT_IMAGE_FALLBACK } from '@/data/products';
 import { CheckoutGateDialog } from '@/components/checkout-gate';
 import { PolicyDialog } from '@/components/policy-dialog';
 import type { PolicyKey } from '@/lib/content/policies';
+import { sendInitiateCheckoutCAPI, sendAddToCartCAPI, sendPageViewCAPI } from '@/app/actions/meta-capi';
+
+declare global {
+  interface Window {
+    fbq: any;
+    gtag: any;
+  }
+}
 
 /** Product as rendered by the shop: local editorial plus whatever Shopify knows. */
 export type ShopProduct = CatalogProduct;
@@ -231,8 +239,6 @@ export function CommerceProvider({ children }: { children: React.ReactNode }) {
   return <CartContext.Provider value={value}>{children}<CartDrawer /></CartContext.Provider>;
 }
 
-
-
 export function useCart() {
   const value = useContext(CartContext);
   if (!value) throw new Error('useCart must be used inside CommerceProvider');
@@ -377,6 +383,40 @@ function CartDrawer() {
   };
 
   const checkout = () => {
+    const eventId = crypto.randomUUID();
+    
+    // 1. Fire Browser Pixels (Meta + Google)
+    if (typeof window !== 'undefined') {
+      if (window.fbq) {
+        window.fbq('track', 'InitiateCheckout', {
+          value: subtotal,
+          currency: currencyCode,
+          num_items: cart.totalQuantity,
+        }, { eventID: eventId });
+      }
+
+      if (window.gtag) {
+        window.gtag('event', 'begin_checkout', {
+          currency: currencyCode,
+          value: subtotal,
+          items: lines.map(line => ({
+            item_id: line.productId,
+            item_name: line.title,
+            price: line.unitPrice,
+            quantity: line.quantity
+          }))
+        });
+      }
+    }
+
+    // 2. Fire Meta CAPI Server Action
+    sendInitiateCheckoutCAPI({
+      eventId: eventId,
+      value: subtotal,
+      currency: currencyCode,
+      cartItems: lines.map(line => ({ id: line.variantId?.split('/').pop() || line.productId }))
+    });
+
     let signedIn = false;
     try { signedIn = document.cookie.split('; ').some((entry) => entry.startsWith('whaleora_signed_in=')); } catch { /* private mode */ }
     if (!signedIn) {
@@ -428,6 +468,49 @@ export function AddToCartButton({ product, quantity = 1, className = '', label =
 export function ProductCard({ product, index = 0 }: { product: ShopProduct; index?: number }) {
   const { add, cart, pending } = useCart();
   const soldOut = unsellable(product, cart.connected);
+
+  const handleQuickAdd = () => {
+    const eventId = crypto.randomUUID();
+    
+    // 1. Meta & Google Browser Events
+    if (typeof window !== 'undefined') {
+      if (window.fbq) {
+        window.fbq('track', 'AddToCart', {
+          content_ids: [product.shopify?.variantId?.split('/').pop() || product.id],
+          content_name: product.title,
+          content_type: 'product',
+          value: product.price,
+          currency: product.currencyCode || 'INR',
+          num_items: 1
+        }, { eventID: eventId });
+      }
+      if (window.gtag) {
+        window.gtag('event', 'add_to_cart', {
+          currency: product.currencyCode || 'INR',
+          value: product.price,
+          items: [{
+            item_id: product.id,
+            item_name: product.title,
+            price: product.price,
+            quantity: 1
+          }]
+        });
+      }
+    }
+    
+    // 2. Meta CAPI Server Action
+    sendAddToCartCAPI({
+      eventId: eventId,
+      productId: product.id,
+      productName: product.title,
+      value: product.price,
+      currency: product.currencyCode || 'INR'
+    });
+
+    // 3. Proceed with adding to cart
+    add(product);
+  };
+
   return (
     <article className="product-card" style={{ '--accent': product.accent } as React.CSSProperties}>
       <Link href={`/products/${product.slug}`} className="product-visual">
@@ -436,7 +519,7 @@ export function ProductCard({ product, index = 0 }: { product: ShopProduct; inde
         <span className="product-card-cue">View object <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" /></span>
       </Link>
       <div className="product-meta"><div><Link href={`/products/${product.slug}`}>{product.title}</Link><small>{product.shortDescription}</small></div><strong>{formatPrice(product.price, product.currencyCode)}</strong></div>
-      <button className="quick-add" onClick={() => add(product)} disabled={soldOut || pending} aria-label={`Add ${product.title} to bag`}>{soldOut ? 'Sold out' : pending ? 'Adding…' : <>Add to bag <Plus size={15} strokeWidth={2.2} aria-hidden="true" /></>}</button>
+      <button className="quick-add" onClick={handleQuickAdd} disabled={soldOut || pending} aria-label={`Add ${product.title} to bag`}>{soldOut ? 'Sold out' : pending ? 'Adding…' : <>Add to bag <Plus size={15} strokeWidth={2.2} aria-hidden="true" /></>}</button>
     </article>
   );
 }
@@ -490,4 +573,25 @@ export function Footer() {
       {policy && <PolicyDialog policy={policy} close={() => setPolicy(null)} />}
     </footer>
   );
+}
+export function PageViewTracker() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const url = window.location.href;
+    const eventId = crypto.randomUUID();
+
+    if (typeof window !== 'undefined') {
+      // 1. Fire Browser Pixel (with Deduplication ID)
+      if (window.fbq) {
+        window.fbq('track', 'PageView', {}, { eventID: eventId });
+      }
+    }
+
+    // 2. Fire Server CAPI
+    sendPageViewCAPI({ eventId: eventId, url: url });
+  }, [pathname, searchParams]);
+
+  return null; // This component is invisible
 }
