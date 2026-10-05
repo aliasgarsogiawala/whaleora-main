@@ -18,6 +18,16 @@ const PRODUCT_FRAGMENT = /* GraphQL */ `
     tags
     featuredImage { ...ImageFields }
     images(first: 8) { nodes { ...ImageFields } }
+    media(first: 20) {
+      nodes {
+        mediaContentType
+        alt
+        previewImage { ...ImageFields }
+        ... on MediaImage { image { ...ImageFields } }
+        ... on Video { sources { url mimeType format height } }
+        ... on ExternalVideo { embedUrl host }
+      }
+    }
     priceRange { minVariantPrice { amount currencyCode } }
     variants(first: 25) {
       nodes {

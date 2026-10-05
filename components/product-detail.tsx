@@ -1,12 +1,11 @@
 'use client';
 
-import Image from 'next/image';
-import { ProductImage } from '@/components/product-image';
+import { optimisedImageUrl, ProductImage } from '@/components/product-image';
 import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, ArrowRight, Check, Feather, Headphones, Minus, Package, Play, Plus, RotateCcw, ShieldCheck, Truck, X, Zap, ZoomIn } from 'lucide-react';
 import { AddToCartButton } from '@/components/commerce';
-import type { CatalogProduct } from '@/lib/shopify/catalog';
+import type { CatalogProduct, GalleryMedia } from '@/lib/shopify/catalog';
 import type { Testimonial, VideoReview } from '@/lib/content/types';
 import { formatPrice } from '@/data/products';
 import { sendAddToCartCAPI } from '@/app/actions/meta-capi';
@@ -32,27 +31,42 @@ function MediaDialog({ title, children, close }: { title: string; children: Reac
   </dialog>;
 }
 
+function GallerySlide({ item, title, position, autoPlay }: { item: GalleryMedia; title: string; position: number; autoPlay: boolean }) {
+  const label = item.alt || `${title} — ${item.kind === 'image' ? 'view' : 'video'} ${position}`;
+  if (item.kind === 'video') return <video key={item.sources[0]?.url} className="pdp-gallery-video" poster={item.poster ? optimisedImageUrl(item.poster, 640) : undefined} controls playsInline preload="metadata" autoPlay={autoPlay} muted={autoPlay} aria-label={label}>{item.sources.map((source) => <source key={source.url} src={source.url} type={source.mimeType} />)}</video>;
+  if (item.kind === 'embed') return <iframe key={item.embedUrl} className="pdp-gallery-video" src={item.embedUrl} title={label} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen />;
+  return <ProductImage key={item.src} src={item.src} alt={label} fill priority={position === 1} sizes="(max-width: 600px) 100vw, (max-width: 900px) 75vw, 40vw" />;
+}
+
 export function ProductGallery({ product }: { product: CatalogProduct }) {
   const [active, setActive] = useState(0);
   const [zoom, setZoom] = useState(false);
+  // Videos only start on their own once the shopper has moved through the
+  // gallery, never on page load.
+  const [browsed, setBrowsed] = useState(false);
   const touch = useRef<{ x: number; y: number } | null>(null);
-  const images = product.images.filter(Boolean);
-  const index = images.length ? active % images.length : 0;
-  const navigate = (direction: number) => setActive((value) => (value + direction + images.length) % images.length);
+  const media = product.media?.length ? product.media : product.images.filter(Boolean).map((src): GalleryMedia => ({ kind: 'image', src, alt: null }));
+  const index = media.length ? active % media.length : 0;
+  const current = media[index];
+  const show = (next: number) => { setBrowsed(true); setActive(next); };
+  const navigate = (direction: number) => { setBrowsed(true); setActive((value) => (value + direction + media.length) % media.length); };
   const icons = [Zap, Feather, Package];
   return <div className="pdp-gallery-block">
     <div className={`pdp-gallery-stage ${product.highlights.length ? '' : 'without-highlights'}`}>
-      <div className="pdp-gallery-image" onTouchStart={(event) => { touch.current = { x: event.touches[0].clientX, y: event.touches[0].clientY }; }} onTouchEnd={(event) => {
-        if (!touch.current || images.length < 2) return;
+      <div className={`pdp-gallery-image ${current && current.kind !== 'image' ? 'is-video' : ''}`} onTouchStart={(event) => { touch.current = { x: event.touches[0].clientX, y: event.touches[0].clientY }; }} onTouchEnd={(event) => {
+        if (!touch.current || media.length < 2) return;
         const dx = event.changedTouches[0].clientX - touch.current.x; const dy = event.changedTouches[0].clientY - touch.current.y; touch.current = null;
         if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) navigate(dx < 0 ? 1 : -1);
       }} onTouchCancel={() => { touch.current = null; }}>
-        {images.length ? <><ProductImage key={images[index]} src={images[index]} alt={`${product.title} — view ${index + 1}`} fill priority={index === 0} sizes="(max-width: 600px) 100vw, (max-width: 900px) 75vw, 40vw" /><button type="button" className="pdp-zoom" aria-label="Enlarge product image" onClick={() => setZoom(true)}><ZoomIn size={18} /></button><span className="pdp-image-count" aria-live="polite">{index + 1} / {images.length}</span></> : <span className="pdp-image-fallback">{product.title}</span>}
+        {current ? <><GallerySlide item={current} title={product.title} position={index + 1} autoPlay={browsed} />{current.kind === 'image' && <button type="button" className="pdp-zoom" aria-label="Enlarge product image" onClick={() => setZoom(true)}><ZoomIn size={18} /></button>}<span className="pdp-image-count" aria-live="polite">{index + 1} / {media.length}</span></> : <span className="pdp-image-fallback">{product.title}</span>}
       </div>
       {product.highlights.length > 0 && <div className="pdp-highlight-rail">{product.highlights.slice(0, 3).map((highlight, i) => { const Icon = icons[i]; return <div key={highlight.label}><Icon size={25} strokeWidth={1.5} aria-hidden="true" /><strong>{highlight.value}</strong><span>{highlight.label}</span></div>; })}</div>}
     </div>
-    {images.length > 1 && <div className="pdp-thumbnails" aria-label="Product images"><button type="button" className="pdp-gallery-arrow" aria-label="Previous product image" onClick={() => navigate(-1)}><ArrowLeft size={17} /></button><div>{images.map((image, i) => <button type="button" key={`${image}-${i}`} className={i === index ? 'is-active' : ''} onClick={() => setActive(i)} aria-label={`Show product image ${i + 1}`} aria-pressed={i === index}><ProductImage src={image} alt="" fill sizes="72px" /></button>)}</div><button type="button" className="pdp-gallery-arrow" aria-label="Next product image" onClick={() => navigate(1)}><ArrowRight size={17} /></button></div>}
-    {zoom && <MediaDialog title={`${product.title} · Image ${index + 1}`} close={() => setZoom(false)}><div className="pdp-zoom-image"><ProductImage src={images[index]} alt={product.title} fill sizes="90vw" /></div></MediaDialog>}
+    {media.length > 1 && <div className="pdp-thumbnails" aria-label="Product images and videos"><button type="button" className="pdp-gallery-arrow" aria-label="Previous product media" onClick={() => navigate(-1)}><ArrowLeft size={17} /></button><div>{media.map((item, i) => {
+      const thumb = item.kind === 'image' ? item.src : item.poster;
+      return <button type="button" key={`${thumb ?? item.kind}-${i}`} className={`${i === index ? 'is-active' : ''} ${item.kind !== 'image' ? 'is-video' : ''}`} onClick={() => show(i)} aria-label={`Show product ${item.kind === 'image' ? 'image' : 'video'} ${i + 1}`} aria-pressed={i === index}>{thumb && <ProductImage src={thumb} alt="" fill sizes="72px" />}{item.kind !== 'image' && <span className="pdp-thumb-play" aria-hidden="true"><Play size={12} fill="currentColor" /></span>}</button>;
+    })}</div><button type="button" className="pdp-gallery-arrow" aria-label="Next product media" onClick={() => navigate(1)}><ArrowRight size={17} /></button></div>}
+    {zoom && current?.kind === 'image' && <MediaDialog title={`${product.title} · Image ${index + 1}`} close={() => setZoom(false)}><div className="pdp-zoom-image"><ProductImage src={current.src} alt={product.title} fill sizes="90vw" /></div></MediaDialog>}
   </div>;
 }
 
@@ -66,8 +80,8 @@ export function ProductQuote({ items }: { items: Testimonial[] }) {
 export function ProductReviewRail({ items }: { items: VideoReview[] }) {
   const [selected, setSelected] = useState<VideoReview | null>(null);
   if (!items.length) return null;
-  return <section className="pdp-review-rail" aria-labelledby="pdp-review-heading"><div className="pdp-small-heading"><h2 id="pdp-review-heading">See it in everyday life.</h2>{items.some((item) => item.demo) && <span>Demo clips</span>}</div><div className="pdp-review-clips">{items.map((item) => <button type="button" key={item.id} onClick={() => setSelected(item)} aria-label={`Watch ${item.demo ? 'demo ' : ''}review: ${item.title}`}><Image unoptimized src={item.poster} alt="" fill sizes="150px" /><span className="pdp-clip-play"><Play size={17} fill="currentColor" /></span><span className="pdp-clip-caption">{item.title}</span></button>)}</div>
-    {selected && <MediaDialog title={`${selected.demo ? 'Demo review' : 'Review'} · ${selected.product}`} close={() => setSelected(null)}><video src={selected.video} poster={selected.poster} controls autoPlay muted playsInline aria-label={selected.title} />{selected.demo && <p className="pdp-demo-disclosure">Sample clip for preview, not a customer testimonial.</p>}</MediaDialog>}
+  return <section className="pdp-review-rail" aria-labelledby="pdp-review-heading"><div className="pdp-small-heading"><h2 id="pdp-review-heading">See it in everyday life.</h2>{items.some((item) => item.demo) && <span>Demo clips</span>}</div><div className="pdp-review-clips">{items.map((item) => <button type="button" key={item.id} onClick={() => setSelected(item)} aria-label={`Watch ${item.demo ? 'demo ' : ''}review: ${item.title}`}><ProductImage src={item.poster} alt="" fill sizes="150px" /><span className="pdp-clip-play"><Play size={17} fill="currentColor" /></span><span className="pdp-clip-caption">{item.title}</span></button>)}</div>
+    {selected && <MediaDialog title={`${selected.demo ? 'Demo review' : 'Review'} · ${selected.product}`} close={() => setSelected(null)}><video src={selected.video} poster={optimisedImageUrl(selected.poster, 760)} controls autoPlay muted playsInline aria-label={selected.title} />{selected.demo && <p className="pdp-demo-disclosure">Sample clip for preview, not a customer testimonial.</p>}</MediaDialog>}
   </section>;
 }
 

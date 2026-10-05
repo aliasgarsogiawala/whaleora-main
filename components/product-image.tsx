@@ -1,7 +1,7 @@
 'use client';
 
-import Image, { type ImageProps } from 'next/image';
-import { isShopifyImage, shopifyImageLoader } from '@/lib/images';
+import Image, { getImageProps, type ImageProps } from 'next/image';
+import { canOptimiseImage, isShopifyImage, shopifyImageLoader } from '@/lib/images';
 
 /**
  * next/image for catalogue photography, wherever the photo comes from.
@@ -14,5 +14,19 @@ import { isShopifyImage, shopifyImageLoader } from '@/lib/images';
  */
 export function ProductImage({ src, alt, ...rest }: ImageProps) {
   const shopify = typeof src === 'string' && isShopifyImage(src);
-  return <Image {...rest} src={src} alt={alt} {...(shopify ? { loader: shopifyImageLoader } : {})} />;
+  // A host next.config.ts does not allow would 400 in the optimiser; show it untouched instead.
+  const foreign = typeof src === 'string' && !shopify && !canOptimiseImage(src);
+  return <Image {...rest} src={src} alt={alt} {...(shopify ? { loader: shopifyImageLoader } : {})} {...(foreign ? { unoptimized: true } : {})} />;
+}
+
+/**
+ * One optimised URL for places that take a bare image URL rather than an
+ * <img> — chiefly a <video poster>, which the browser fetches at full size
+ * otherwise. `width` is the CSS width it is shown at; the URL is sized for 2x.
+ */
+export function optimisedImageUrl(src: string, width: number): string {
+  if (!src) return src;
+  if (isShopifyImage(src)) return getImageProps({ src, alt: '', width, height: width, loader: shopifyImageLoader }).props.src;
+  if (!canOptimiseImage(src)) return src;
+  return getImageProps({ src, alt: '', width, height: width }).props.src;
 }

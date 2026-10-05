@@ -22,7 +22,7 @@ export function ProductsBrowser({ catalog }: { catalog: ShopProduct[] }) {
         <div role="group" aria-label="Filter products by category">{['All', 'Alarms', 'Tools'].map((item) => <button key={item} className={category === item ? 'active' : ''} aria-pressed={category === item} onClick={() => setCategory(item)}>{item}<sup>{item === 'All' ? catalog.length : catalog.filter((product) => product.category === item).length}</sup></button>)}</div>
         <label>Sort <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="featured">Featured</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option><option value="name">Name</option></select></label>
       </div>
-      <div className="product-grid">{shown.map((product, index) => <ProductCard key={product.id} product={product} index={index} />)}</div>
+      <div className="product-grid">{shown.map((product) => <ProductCard key={product.id} product={product} />)}</div>
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import Image, { getImageProps } from 'next/image';
 
 import Link from 'next/link';
 
@@ -17,6 +17,9 @@ import { publishedContent } from '@/lib/content/store';
 import { formatPrice } from '@/data/products';
 
 import { ArrowRight, ArrowUpRight } from 'lucide-react';
+
+// The poster paints first on every homepage visit; send it through the optimiser (1920w, WebP/AVIF) instead of as the raw JPEG.
+const heroPoster = getImageProps({ src: '/lifestyle/hero-commute-poster.jpg', alt: '', width: 960, height: 540 }).props.src;
 
 export const revalidate = 3600
 
@@ -50,7 +53,7 @@ export default async function Home() {
             loop
             playsInline
             preload="metadata"
-            poster="/lifestyle/hero-commute-poster.jpg"
+            poster={heroPoster}
             aria-hidden="true"
           >
 
@@ -136,11 +139,10 @@ export default async function Home() {
         </div>
 
         <div className="product-grid shell">
-          {catalog.map((product, index) => (
+          {catalog.map((product) => (
             <ProductCard
               key={product.id}
               product={product}
-              index={index}
             />
           ))}
         </div>

@@ -153,6 +153,6 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <details><summary>What should I know before relying on it?<span>+</span></summary><p>{product.compare.caveat !== '—' ? product.compare.caveat : product.shortDescription} A safety tool cannot guarantee an outcome. Keep it accessible and learn how to use it before you need it.</p></details>
     </div></div></section>
 
-    {related.length > 0 && <section className="pdp-recommendations shell pdp-section"><div className="pdp-section-heading"><p className="eyebrow dark">Better prepared, together</p><h2>Build your everyday kit.</h2><p>Choose the tools that suit your routine.</p></div><div className="product-grid">{related.map((item, index) => <ProductCard key={item.id} product={item} index={index} />)}</div></section>}
+    {related.length > 0 && <section className="pdp-recommendations shell pdp-section"><div className="pdp-section-heading"><p className="eyebrow dark">Better prepared, together</p><h2>Build your everyday kit.</h2><p>Choose the tools that suit your routine.</p></div><div className="product-grid">{related.map((item) => <ProductCard key={item.id} product={item} />)}</div></section>}
   </main>;
 }

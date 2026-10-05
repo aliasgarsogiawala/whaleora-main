@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
+import { ProductImage } from '@/components/product-image';
 import './3-d-coverflow-carousel.css';
 
 const ChevronLeftIcon = () => <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>;
@@ -106,9 +107,8 @@ export function CoverFlowCarousel({ items = emptyItems, sectionLabel = 'Product 
         } as CSSProperties;
         const cta = <>{item.ctaText || 'View details'}<ArrowRightIcon /></>;
         return <article key={item.id || `${item.img}-${index}`} className={`coverflow-card ${center ? 'is-center' : ''}`} style={style} role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${total}: ${item.titleLine1}`} aria-hidden={!center}>
-          {/* Native images support arbitrary admin-hosted HTTPS media without a remote allowlist. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={item.img} alt={item.titleLine1} loading={distance <= 1 ? 'eager' : 'lazy'} decoding="async" draggable={false} />
+          {/* Optimised and sized for the card; an admin URL on an unlisted host falls back to the original. */}
+          <ProductImage src={item.img} alt={item.titleLine1} fill sizes="(max-width: 700px) 232px, 280px" loading={distance <= 1 ? 'eager' : 'lazy'} draggable={false} />
           <div className="coverflow-shade" />
           <div className="coverflow-content">
             {item.tag && <span className="coverflow-tag">{item.tag}</span>}

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ArrowUpRight, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CoverFlowCarousel } from '@/components/ui/3-d-coverflow-carousel';
+import { optimisedImageUrl } from '@/components/product-image';
 import type { ReviewContent, VideoReview } from '@/lib/content/types';
 
 export function SafetyJourneyGallery({ items, settings }: { items: VideoReview[]; settings: ReviewContent['settings'] }) {
@@ -54,7 +55,7 @@ export function SafetyJourneyGallery({ items, settings }: { items: VideoReview[]
       <dialog ref={dialog} className="review-dialog" aria-labelledby="review-player-title" onClose={() => { player.current?.pause(); setSelected(null); }} onClick={(event) => { if (event.target === event.currentTarget) closeReview(); }}>
         {review && <div className="review-player-shell">
           <div className="review-player-head"><span>{review.demo ? 'Demo review' : 'Product review'} · {review.duration}</span><button type="button" onClick={closeReview} aria-label="Close video"><X size={22} /></button></div>
-          <video key={review.id} ref={player} src={review.video} poster={review.poster} controls autoPlay muted playsInline preload="metadata" aria-label={`${review.product} video review`} />
+          <video key={review.id} ref={player} src={review.video} poster={optimisedImageUrl(review.poster, 760)} controls autoPlay muted playsInline preload="metadata" aria-label={`${review.product} video review`} />
           <div className="review-player-caption"><h2 id="review-player-title">{review.title}</h2>{review.demo && <p>Customer testimonial</p>}<Link href={`/products/${review.slug}`} onClick={closeReview}>Explore {review.product} <span aria-hidden="true"><ArrowUpRight size={16} strokeWidth={2} /></span></Link></div>
         </div>}
       </dialog>

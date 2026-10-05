@@ -39,6 +39,22 @@ export function isOptimisableImage(value: string): boolean {
   }
 }
 
+/**
+ * True when next/image can serve this src through its optimiser: a local path,
+ * or a host on either list next.config.ts allows. Video posters and review
+ * thumbnails are free-form studio URLs, so anything else is shown as-is rather
+ * than handed to the optimiser to fail with a 400.
+ */
+export function canOptimiseImage(value: string): boolean {
+  if (value.startsWith('/')) return !value.startsWith('//');
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && [...IMAGE_HOSTS, ...REVIEW_IMAGE_HOSTS].some((pattern) => matchesHost(pattern, url.hostname));
+  } catch {
+    return false;
+  }
+}
+
 /** Human-readable host list, for the error an editor actually reads. */
 export const imageHostHint = IMAGE_HOSTS.join(' or ');
 

@@ -3,7 +3,7 @@ import { publishedContent } from '@/lib/content/store';
 import type { ProductEditorial } from '@/lib/content/types';
 import { isShopifyConfigured, safely, shopifyFetch, SHOPIFY_PRODUCTS_TAG } from './client';
 import { PRODUCTS_QUERY } from './queries';
-import type { ShopifyProduct, ShopifyVariant } from './types';
+import type { ShopifyMedia, ShopifyProduct, ShopifyVariant } from './types';
 
 export type CatalogVariant = {
   id: string;
@@ -30,8 +30,55 @@ const variantsFor = (remote: ShopifyProduct): CatalogVariant[] => remote.variant
  */
 const CATALOG_REVALIDATE_SECONDS = 60;
 
+/** One slide of the product gallery. */
+export type GalleryMedia =
+  | { kind: 'image'; src: string; alt: string | null }
+  | { kind: 'video'; sources: { url: string; mimeType: string }[]; poster: string | null; alt: string | null }
+  | { kind: 'embed'; embedUrl: string; poster: string | null; alt: string | null };
+
+/**
+ * Shopify serves each uploaded video as several MP4 renditions plus an HLS
+ * playlist. Browsers take the first <source> they can play, so the sharpest
+ * MP4 that is still a sensible download goes first, HLS (Safari-only without a
+ * player library) last.
+ */
+const orderSources = (sources: NonNullable<ShopifyMedia['sources']>) => {
+  const mp4 = sources.filter((source) => source.mimeType === 'video/mp4').sort((a, b) => b.height - a.height);
+  const fitting = mp4.filter((source) => source.height <= 1080);
+  const rest = sources.filter((source) => source.mimeType !== 'video/mp4');
+  return [...fitting, ...mp4.filter((source) => source.height > 1080), ...rest].map(({ url, mimeType }) => ({ url, mimeType }));
+};
+
+function toGalleryMedia(media: ShopifyMedia): GalleryMedia | null {
+  const poster = media.previewImage?.url ?? null;
+  if (media.mediaContentType === 'IMAGE') {
+    const src = media.image?.url ?? poster;
+    return src ? { kind: 'image', src, alt: media.alt } : null;
+  }
+  if (media.mediaContentType === 'VIDEO' && media.sources?.length) return { kind: 'video', sources: orderSources(media.sources), poster, alt: media.alt };
+  if (media.mediaContentType === 'EXTERNAL_VIDEO' && media.embedUrl) return { kind: 'embed', embedUrl: media.embedUrl, poster, alt: media.alt };
+  return null; // 3D models have no gallery treatment yet.
+}
+
+const storeMedia = (remote: ShopifyProduct | undefined) => (remote?.media?.nodes ?? []).map(toGalleryMedia).filter((item): item is GalleryMedia => item !== null);
+
+/**
+ * The gallery. When the photos come from Shopify, the store's own media list is
+ * used as-is, so videos land wherever the merchant dragged them. When the photos
+ * come from the studio or the bundled record instead, Shopify's videos still
+ * follow them — an override replaces photography, not the product video.
+ */
+function galleryFor(images: string[], remote: ShopifyProduct | undefined, photosFromStore: boolean): GalleryMedia[] {
+  const fromStore = storeMedia(remote);
+  if (photosFromStore && fromStore.length) return fromStore;
+  const videos = fromStore.filter((item) => item.kind !== 'image');
+  return [...images.map((src): GalleryMedia => ({ kind: 'image', src, alt: null })), ...videos];
+}
+
 export type CatalogProduct = Product & {
   currencyCode: string;
+  /** Photos and videos for the product page gallery, in display order. */
+  media: GalleryMedia[];
   /**
    * True when `price` came from an admin override rather than Shopify. The
    * purchase box reads this so a per-variant Shopify price does not quietly
@@ -113,6 +160,8 @@ const shopifyLink = (remote: ShopifyProduct) => {
  */
 function resolve(local: Product, remote: ShopifyProduct | undefined, editorial: ProductEditorial | undefined): CatalogProduct {
   const store = remoteFields(remote);
+  const photosFromStore = !editorial?.images.length && store.images.length > 0;
+  const images = editorial?.images.length ? editorial.images : (photosFromStore ? store.images : local.images);
   const pick = (override: string | undefined, fromStore: string, bundled: string) => override?.trim() || fromStore.trim() || bundled;
 
   return {
@@ -136,7 +185,8 @@ function resolve(local: Product, remote: ShopifyProduct | undefined, editorial: 
     title: pick(editorial?.title, store.title, local.title),
     shortDescription: pick(editorial?.shortDescription, summarise(store.description), local.shortDescription),
     longDescription: pick(editorial?.longDescription, store.description, local.longDescription),
-    images: editorial?.images.length ? editorial.images : (store.images.length ? store.images : local.images),
+    images,
+    media: galleryFor(images, remote, photosFromStore),
     price: editorial?.price ?? store.price ?? local.price,
     priceOverridden: editorial?.price != null,
     currencyCode: store.currencyCode ?? local.currencyCode ?? 'INR',
@@ -152,6 +202,7 @@ function adopt(remote: ShopifyProduct): CatalogProduct {
   const currencyCode = variant?.price.currencyCode ?? remote.priceRange.minVariantPrice.currencyCode;
   const description = remote.description.trim();
   const summary = description.split(/\n+/)[0] || `${remote.title} from Whaleora.`;
+  const images = remote.images.nodes.map((image) => image.url);
 
   return {
     id: remote.handle,
@@ -165,7 +216,8 @@ function adopt(remote: ShopifyProduct): CatalogProduct {
     price,
     priceOverridden: false,
     currencyCode,
-    images: remote.images.nodes.map((image) => image.url),
+    images,
+    media: galleryFor(images, remote, true),
     features: [],
     specifications: [],
     howItWorks: [],

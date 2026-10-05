@@ -2,6 +2,19 @@ export type ShopifyMoney = { amount: string; currencyCode: string };
 
 export type ShopifyImage = { url: string; altText: string | null; width: number | null; height: number | null };
 
+export type ShopifyVideoSource = { url: string; mimeType: string; format: string; height: number };
+
+/** One entry of a product's media, in the order the merchant arranged it in Shopify. */
+export type ShopifyMedia = {
+  mediaContentType: 'IMAGE' | 'VIDEO' | 'EXTERNAL_VIDEO' | 'MODEL_3D';
+  alt: string | null;
+  previewImage: ShopifyImage | null;
+  image?: ShopifyImage | null;
+  sources?: ShopifyVideoSource[];
+  embedUrl?: string;
+  host?: 'YOUTUBE' | 'VIMEO';
+};
+
 export type ShopifyVariant = {
   id: string;
   title: string;
@@ -20,6 +33,7 @@ export type ShopifyProduct = {
   tags: string[];
   featuredImage: ShopifyImage | null;
   images: { nodes: ShopifyImage[] };
+  media: { nodes: ShopifyMedia[] };
   variants: { nodes: ShopifyVariant[] };
   priceRange: { minVariantPrice: ShopifyMoney };
 };

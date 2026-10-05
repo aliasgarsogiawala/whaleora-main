@@ -465,7 +465,7 @@ export function AddToCartButton({ product, quantity = 1, className = '', label =
   return <button className={`button button-primary ${className}`} onClick={() => add(product, quantity)} disabled={pending}>{pending ? 'Adding…' : label} <span aria-hidden="true"><ArrowRight size={16} strokeWidth={2} /></span></button>;
 }
 
-export function ProductCard({ product, index = 0 }: { product: ShopProduct; index?: number }) {
+export function ProductCard({ product }: { product: ShopProduct }) {
   const { add, cart, pending } = useCart();
   const soldOut = unsellable(product, cart.connected);
 
@@ -514,7 +514,6 @@ export function ProductCard({ product, index = 0 }: { product: ShopProduct; inde
   return (
     <article className="product-card" style={{ '--accent': product.accent } as React.CSSProperties}>
       <Link href={`/products/${product.slug}`} className="product-visual">
-        <small>0{index + 1} · {product.category}</small>
         <ProductImage src={product.images[0] || PRODUCT_IMAGE_FALLBACK} width={700} height={700} alt={product.title} sizes="(max-width: 1100px) 50vw, 25vw" />
         <span className="product-card-cue">View object <ArrowUpRight size={14} strokeWidth={2} aria-hidden="true" /></span>
       </Link>
