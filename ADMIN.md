@@ -1,6 +1,6 @@
 # Whaleora content studio
 
-Open `/admin` to edit product copy, Safety Hub checklists and habits, written testimonials, video reviews, media, ordering, visibility, headings and marquee speed. Prices, photos and SKUs stay in Shopify. The original storefront palette is unchanged.
+Open `/admin` to edit product copy, Safety Hub checklists and habits, journal posts (shown at `/blog`), written testimonials, video reviews, media, ordering, visibility, headings and marquee speed. Prices, photos and SKUs stay in Shopify. The original storefront palette is unchanged.
 
 ## Local development
 

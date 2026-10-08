@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import Link from 'next/link';
-import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpRight, Check, ChevronRight, Film, ListChecks, LogOut, MessageSquare, Package, Plus, Settings2, Star, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpRight, BookOpen, Check, ChevronRight, Film, ListChecks, LogOut, MessageSquare, Package, Plus, Settings2, Star, Trash2, X } from 'lucide-react';
 import { imageHostHint } from '@/lib/images';
-import type { ContentDocument, HubChecklistContent, ProductEditorial, ReviewContent, Testimonial, VideoReview } from '@/lib/content/types';
+import type { BlogPost, ContentDocument, HubChecklistContent, ProductEditorial, ReviewContent, Testimonial, VideoReview } from '@/lib/content/types';
 import type { ShopifySnapshot } from '@/lib/shopify/catalog';
-import { validateContent } from '@/lib/content/types';
+import { BLOG_BODY_LIMIT, BLOG_POST_LIMIT, validateContent } from '@/lib/content/types';
 import { TestimonialsMarquee } from '@/components/testimonials-marquee';
 
 async function request(url: string, method: string, payload?: unknown) {
@@ -57,7 +57,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) { re
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
   return <label className="admin-toggle"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
 }
-type Tab = 'testimonials' | 'videos' | 'products' | 'checklists' | 'customer' | 'settings' | 'preview';
+type Tab = 'testimonials' | 'videos' | 'products' | 'checklists' | 'posts' | 'customer' | 'settings' | 'preview';
 
 type PendingReview = { id: string; productHandle: string; rating: number; name: string; email: string; body: string; images: string[]; status: string; heldReason?: string; verifiedBuyer: boolean; submittedAt: string };
 type ReviewView = 'held' | 'published' | 'removed';
@@ -66,10 +66,12 @@ const tabs = [
   { id: 'videos', label: 'Video reviews', icon: Film },
   { id: 'products', label: 'Product details', icon: Package },
   { id: 'checklists', label: 'Checklists', icon: ListChecks },
+  { id: 'posts', label: 'Blog posts', icon: BookOpen },
   { id: 'customer', label: 'Customer reviews', icon: Star },
   { id: 'settings', label: 'Section settings', icon: Settings2 },
 ] as const;
-const listTabs = new Set<Tab>(['testimonials', 'videos', 'products', 'checklists']);
+const listTabs = new Set<Tab>(['testimonials', 'videos', 'products', 'checklists', 'posts']);
+const slugify = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100);
 
 export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { initial: ContentDocument; shopify: { connected: boolean; items: ShopifySnapshot[] }; uploadsEnabled: boolean; canSave: boolean }) {
   const [document, setDocument] = useState(initial);
@@ -120,6 +122,7 @@ export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { ini
     if (next === 'videos') return source.videos[0]?.id || '';
     if (next === 'products') return source.products[0]?.id || '';
     if (next === 'checklists') return source.checklists[0]?.id || '';
+    if (next === 'posts') return source.posts[0]?.id || '';
     return '';
   }
   function navigate(next: Tab) { setTab(next); setSelectedId(firstId(next)); setNotice(''); if (next === 'customer') showReviews('held'); }
@@ -131,6 +134,7 @@ export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { ini
     if (patch.id) setSelectedId(patch.id);
     setNotice('');
   }
+  function updatePost(id: string, patch: Partial<BlogPost>) { setContent((value) => ({ ...value, posts: value.posts.map((item) => item.id === id ? { ...item, ...patch } : item) })); setNotice(''); }
   function setting<K extends keyof ReviewContent['settings']>(key: K, value: ReviewContent['settings'][K]) { setContent((current) => ({ ...current, settings: { ...current.settings, [key]: value } })); setNotice(''); }
   function add() {
     const id = crypto.randomUUID();
@@ -140,6 +144,11 @@ export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { ini
       const checklistId = `checklist-${id.slice(0, 8)}`;
       setContent((value) => ({ ...value, checklists: [...value.checklists, { id: checklistId, title: 'New checklist', description: 'When to use this list.', items: ['First item', 'Second item', 'Third item'] }] }));
       setSelectedId(checklistId); setNotice(''); return;
+    }
+    if (tab === 'posts') {
+      const postId = `post-${id.slice(0, 8)}`;
+      setContent((value) => ({ ...value, posts: [{ id: postId, slug: `new-post-${id.slice(0, 4)}`, title: '', excerpt: '', category: 'Everyday Safety', author: 'Whaleora Team', date: new Date().toISOString().slice(0, 10), coverImage: '', body: '', visible: false }, ...value.posts] }));
+      setSelectedId(postId); setNotice(''); return;
     }
     setSelectedId(id); setNotice('');
   }
@@ -153,9 +162,9 @@ export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { ini
     });
   }
   function remove() {
-    if (tab !== 'testimonials' && tab !== 'videos' && tab !== 'checklists') return;
-    if (tab === 'checklists' && content.checklists.length <= 1) return;
-    if (!window.confirm(tab === 'checklists' ? 'Remove this checklist from the draft? The live store changes only when you publish.' : 'Remove this review from the draft? The live store changes only when you publish.')) return;
+    if (tab !== 'testimonials' && tab !== 'videos' && tab !== 'checklists' && tab !== 'posts') return;
+    if ((tab === 'checklists' || tab === 'posts') && content[tab].length <= 1) return;
+    if (!window.confirm(`Remove this ${tab === 'checklists' ? 'checklist' : tab === 'posts' ? 'post' : 'review'} from the draft? The live store changes only when you publish.`)) return;
     const list = content[tab].filter((item) => item.id !== selectedId);
     setContent((value) => ({ ...value, [tab]: list })); setSelectedId(list[0]?.id || '');
   }
@@ -174,7 +183,7 @@ export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { ini
     setBusy(true); setError('');
     try { const latest = await request('/api/admin/content', 'GET'); setDocument(latest); setContent(latest.draft); setSelectedId(firstId(tab, latest.draft)); setNotice('Latest draft loaded.'); } catch (error) { setError((error as Error).message); } finally { setBusy(false); }
   }
-  async function upload(file: File | undefined, key: 'poster' | 'video' | 'howItWorksImage', id: string) {
+  async function upload(file: File | undefined, key: 'poster' | 'video' | 'howItWorksImage' | 'coverImage', id: string) {
     if (!file) return;
     setError(''); setUploading(true);
     try {
@@ -182,6 +191,7 @@ export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { ini
       const response = await fetch('/api/admin/upload', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
       const data = await response.json(); if (!response.ok) throw new Error(data.error);
       if (key === 'howItWorksImage') updateProduct(id, { howItWorksImage: data.url });
+      else if (key === 'coverImage') updatePost(id, { coverImage: data.url });
       else updateVideo(id, { [key]: data.url });
       setNotice('Media uploaded. Save or publish to use it.');
     } catch (error) { setError((error as Error).message); } finally { setUploading(false); }
@@ -202,7 +212,8 @@ export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { ini
       : value === null || value === undefined || value === '' ? whenEmpty
       : `Blank uses Shopify: ${String(value).slice(0, 90)}`);
   const checklist = content.checklists.find((item) => item.id === selectedId);
-  const list = tab === 'testimonials' ? content.testimonials : tab === 'videos' ? content.videos : tab === 'products' ? content.products : tab === 'checklists' ? content.checklists : [];
+  const post = content.posts.find((item) => item.id === selectedId);
+  const list = tab === 'testimonials' ? content.testimonials : tab === 'videos' ? content.videos : tab === 'products' ? content.products : tab === 'checklists' ? content.checklists : tab === 'posts' ? content.posts : [];
   const index = list.findIndex((item) => item.id === selectedId);
   const locked = busy || uploading;
   const summaries: Record<Tab, string> = {
@@ -210,6 +221,7 @@ export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { ini
     videos: 'A closer look, through your customers’ eyes.',
     products: 'Shopify fills these in. Type over any of them only when you need to.',
     checklists: 'Safety Hub lists people can open, print and take with them.',
+    posts: 'Journal posts at /blog. Newest date first; hidden posts stay off the store.',
     customer: 'Reviews publish as written. Only ones caught by the abuse and spam filter wait here — and you can take any published review down.',
     settings: 'Set the rhythm of your review sections and the ten habits.',
     preview: 'A preview of your current edits—not yet published.',
@@ -227,13 +239,13 @@ export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { ini
         {notice && <p className="admin-notice" role="status"><Check size={16} />{notice}</p>}
         <div className="admin-summary"><p>{summaries[tab]}</p><span>{document.publishedAt ? `Last published ${document.publishedAt.slice(0, 10)}` : 'Using starter demo content'}</span></div>
         {listTabs.has(tab) && <div className="admin-workspace">
-          <section className="admin-list"><div className="admin-list-heading"><span>{tab === 'testimonials' || tab === 'videos' ? `${list.filter((item) => 'visible' in item && item.visible).length} visible / ${list.length} total` : `${list.length} ${tab}`}</span>{tab !== 'products' && <button className="admin-button" onClick={add} disabled={locked || list.length >= (tab === 'checklists' ? 24 : 40)}><Plus size={16} /> Add</button>}</div>
-            {list.map((item, i) => <button key={item.id} className={`admin-list-item ${selectedId === item.id ? 'selected' : ''}`} onClick={() => setSelectedId(item.id)}><span className="admin-number">{String(i + 1).padStart(2, '0')}</span><span><strong>{tab === 'testimonials' && 'name' in item ? item.name || 'New testimonial' : tab === 'products' ? ('title' in item && item.title) || shopify.items.find((entry) => entry.id === item.id)?.title || item.id : 'title' in item ? item.title || 'Untitled' : item.id}</strong><small>{tab === 'testimonials' && 'quote' in item ? item.quote || 'Add a quote to get started' : tab === 'videos' && 'product' in item ? item.product || 'Add product details' : tab === 'products' && 'shortDescription' in item ? (item.shortDescription || shopify.items.find((entry) => entry.id === item.id)?.description.split('\n')[0] || 'From Shopify') : 'description' in item ? item.description : ''}</small><em>{'visible' in item ? `${item.visible ? 'Visible' : 'Hidden'}${item.demo ? ' · Demo' : ''}${'row' in item ? ` · Row ${item.row}` : ''}` : tab === 'products' ? (overridden(item as ProductEditorial) ? 'Overridden' : 'From Shopify') : `${'items' in item ? item.items.length : 0} items`}</em></span><ChevronRight size={16} /></button>)}
+          <section className="admin-list"><div className="admin-list-heading"><span>{tab === 'testimonials' || tab === 'videos' || tab === 'posts' ? `${list.filter((item) => 'visible' in item && item.visible).length} visible / ${list.length} total` : `${list.length} ${tab}`}</span>{tab !== 'products' && <button className="admin-button" onClick={add} disabled={locked || list.length >= (tab === 'checklists' ? 24 : tab === 'posts' ? BLOG_POST_LIMIT : 40)}><Plus size={16} /> Add</button>}</div>
+            {list.map((item, i) => <button key={item.id} className={`admin-list-item ${selectedId === item.id ? 'selected' : ''}`} onClick={() => setSelectedId(item.id)}><span className="admin-number">{String(i + 1).padStart(2, '0')}</span><span><strong>{tab === 'testimonials' && 'name' in item ? item.name || 'New testimonial' : tab === 'products' ? ('title' in item && item.title) || shopify.items.find((entry) => entry.id === item.id)?.title || item.id : 'title' in item ? item.title || 'Untitled' : item.id}</strong><small>{tab === 'testimonials' && 'quote' in item ? item.quote || 'Add a quote to get started' : tab === 'videos' && 'product' in item ? item.product || 'Add product details' : tab === 'products' && 'shortDescription' in item ? (item.shortDescription || shopify.items.find((entry) => entry.id === item.id)?.description.split('\n')[0] || 'From Shopify') : 'excerpt' in item ? item.excerpt || 'Add an excerpt' : 'description' in item ? item.description : ''}</small><em>{'visible' in item ? `${item.visible ? 'Visible' : 'Hidden'}${'demo' in item && item.demo ? ' · Demo' : ''}${'date' in item ? ` · ${item.date}` : ''}${'row' in item ? ` · Row ${item.row}` : ''}` : tab === 'products' ? (overridden(item as ProductEditorial) ? 'Overridden' : 'From Shopify') : `${'items' in item ? item.items.length : 0} items`}</em></span><ChevronRight size={16} /></button>)}
             {!list.length && <p className="admin-empty">Nothing here yet.</p>}
           </section>
           <section className="admin-editor-panel" aria-label="Content editor">
-            {((tab === 'testimonials' && written) || (tab === 'videos' && video) || (tab === 'products' && product) || (tab === 'checklists' && checklist)) ? <>
-              <div className="admin-panel-heading"><h2>{tab === 'testimonials' ? 'Edit testimonial' : tab === 'videos' ? 'Edit video review' : tab === 'products' ? 'Edit product copy' : 'Edit checklist'}</h2><div>{tab !== 'products' && <><button className="admin-icon" aria-label="Move up" disabled={index <= 0 || locked} onClick={() => reorder(-1)}><ArrowUp size={17} /></button><button className="admin-icon" aria-label="Move down" disabled={index >= list.length - 1 || locked} onClick={() => reorder(1)}><ArrowDown size={17} /></button>{tab !== 'checklists' || content.checklists.length > 1 ? <button className="admin-icon danger" aria-label="Delete" onClick={remove} disabled={locked}><Trash2 size={17} /></button> : null}</>}</div></div>
+            {((tab === 'testimonials' && written) || (tab === 'videos' && video) || (tab === 'products' && product) || (tab === 'checklists' && checklist) || (tab === 'posts' && post)) ? <>
+              <div className="admin-panel-heading"><h2>{tab === 'testimonials' ? 'Edit testimonial' : tab === 'videos' ? 'Edit video review' : tab === 'products' ? 'Edit product copy' : tab === 'posts' ? 'Edit blog post' : 'Edit checklist'}</h2><div>{tab !== 'products' && <>{tab !== 'posts' && <><button className="admin-icon" aria-label="Move up" disabled={index <= 0 || locked} onClick={() => reorder(-1)}><ArrowUp size={17} /></button><button className="admin-icon" aria-label="Move down" disabled={index >= list.length - 1 || locked} onClick={() => reorder(1)}><ArrowDown size={17} /></button></>}{(tab !== 'checklists' && tab !== 'posts') || list.length > 1 ? <button className="admin-icon danger" aria-label="Delete" onClick={remove} disabled={locked}><Trash2 size={17} /></button> : null}</>}</div></div>
               <fieldset disabled={locked} className="admin-fields">
                 {tab === 'testimonials' && written && <>
                   <Field label="Quote"><textarea rows={5} maxLength={600} value={written.quote} onChange={(event) => updateWritten(written.id, { quote: event.target.value })} placeholder="Their experience, in their own words." /><small>{written.quote.length}/600 characters</small></Field>
@@ -283,6 +295,18 @@ export function AdminEditor({ initial, shopify, uploadsEnabled, canSave }: { ini
                   <div className="admin-field-pair"><Field label="Title"><input maxLength={80} value={checklist.title} onChange={(event) => updateChecklist(checklist.id, { title: event.target.value })} /></Field><Field label="ID"><input maxLength={80} value={checklist.id} onChange={(event) => { const next = event.target.value.trim(); if (!next) return; updateChecklist(checklist.id, { id: next }); }} /><small>Letters, numbers, hyphens. Used by Safety Hub profiles.</small></Field></div>
                   <Field label="Description"><textarea rows={3} maxLength={220} value={checklist.description} onChange={(event) => updateChecklist(checklist.id, { description: event.target.value })} /></Field>
                   <Field label="Items"><textarea rows={10} value={joinLines(checklist.items)} onChange={(event) => updateChecklist(checklist.id, { items: lines(event.target.value) })} /><small>One item per line. 3–16 items.</small></Field>
+                </>}
+                {tab === 'posts' && post && <>
+                  <Field label="Title"><input maxLength={120} value={post.title} placeholder="A clear, specific headline" onChange={(event) => updatePost(post.id, { title: event.target.value })} /></Field>
+                  <Field label="URL slug"><div className="admin-field-pair"><input maxLength={100} value={post.slug} onChange={(event) => updatePost(post.id, { slug: event.target.value.toLowerCase() })} /><button type="button" className="admin-button" onClick={() => updatePost(post.id, { slug: slugify(post.title) || post.slug })} disabled={!post.title.trim()}>Use title</button></div><small>/blog/{post.slug || 'post-slug'} · lowercase letters, numbers and hyphens. Changing it breaks links already shared.</small></Field>
+                  <Field label="Excerpt"><textarea rows={3} maxLength={280} value={post.excerpt} onChange={(event) => updatePost(post.id, { excerpt: event.target.value })} placeholder="One or two sentences for the card and search results." /><small>{post.excerpt.length}/280 characters</small></Field>
+                  <div className="admin-field-pair"><Field label="Category"><input maxLength={40} value={post.category} onChange={(event) => updatePost(post.id, { category: event.target.value })} /></Field><Field label="Author"><input maxLength={80} value={post.author} onChange={(event) => updatePost(post.id, { author: event.target.value })} /></Field></div>
+                  <Field label="Date"><input type="date" value={post.date} onChange={(event) => updatePost(post.id, { date: event.target.value })} /><small>Posts are listed newest first.</small></Field>
+                  <Field label="Cover photo"><input value={post.coverImage} maxLength={2048} placeholder="/stock/journey-city.webp" onChange={(event) => updatePost(post.id, { coverImage: event.target.value })} /><small>One /local path or {imageHostHint} URL. Blank shows the post without a photo.</small></Field>
+                  {uploadsEnabled && <Field label="Or upload JPG, PNG, WebP · max 5 MB"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void upload(event.target.files?.[0], 'coverImage', post.id); event.target.value = ''; }} /></Field>}
+                  <Field label="Body"><textarea rows={18} maxLength={BLOG_BODY_LIMIT} value={post.body} onChange={(event) => updatePost(post.id, { body: event.target.value })} placeholder={'Leave a blank line between paragraphs.\n\n## A subheading\n\n- A list item\n- Another item'} /><small>{post.body.length}/{BLOG_BODY_LIMIT} · Blank line between paragraphs. Start a line with “## ” for a subheading or “- ” for a list item.</small></Field>
+                  <Toggle label="Visible on the storefront" checked={post.visible} onChange={(visible) => updatePost(post.id, { visible })} />
+                  {post.visible && document.published.posts.some((item) => item.id === post.id && item.visible) && <a className="icon-link" href={`/blog/${document.published.posts.find((item) => item.id === post.id)?.slug}`} target="_blank" rel="noreferrer">View live post <ArrowUpRight size={14} /></a>}
                 </>}
                 {(tab === 'testimonials' || tab === 'videos') && <p className="admin-help">Only turn off the demo label for genuine customer content you have permission to use.</p>}
               </fieldset>

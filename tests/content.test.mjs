@@ -103,3 +103,30 @@ test('rejects an unusable price override or image URL', () => {
   value.products = [{ ...sampleProduct(), images: ['javascript:alert(1)'] }];
   assert.throws(() => validateContent(value), /must be a local path or an HTTPS media URL/);
 });
+
+const samplePost = () => ({ id: 'post-one', slug: 'first-post', title: 'First post', excerpt: 'A short summary.', category: 'Travel', author: 'Whaleora Team', date: '2026-10-01', coverImage: '', body: 'Hello.', visible: true });
+test('validates blog posts and leaves them empty when absent', () => {
+  assert.deepEqual(validateContent(fixture()).posts, []);
+  const value = fixture(); value.posts = [{ ...samplePost(), title: '  Trimmed  ' }];
+  assert.equal(validateContent(value).posts[0].title, 'Trimmed');
+});
+test('rejects bad post slugs, dates, duplicates, cover hosts and an empty list', () => {
+  for (const slug of ['Upper', 'two--hyphens', '-lead', 'spa ce', '../x']) {
+    const value = fixture(); value.posts = [{ ...samplePost(), slug }]; assert.throws(() => validateContent(value), /slug/);
+  }
+  for (const date of ['2026-13-01', '01-10-2026', 'soon']) {
+    const value = fixture(); value.posts = [{ ...samplePost(), date }]; assert.throws(() => validateContent(value), /YYYY-MM-DD/);
+  }
+  const duplicate = fixture(); duplicate.posts = [samplePost(), { ...samplePost(), id: 'post-two' }]; assert.throws(() => validateContent(duplicate), /slug/);
+  const cover = fixture(); cover.posts = [{ ...samplePost(), coverImage: 'https://example.com/a.jpg' }]; assert.throws(() => validateContent(cover), /Cover photo/);
+  const empty = fixture(); empty.posts = []; assert.throws(() => validateContent(empty), /blog posts/);
+});
+test('parses a post body into paragraphs, headings and lists', async () => {
+  const { parseBody } = await import('../lib/content/blog.ts');
+  assert.deepEqual(parseBody('One\ntwo\n\n## Head\n- a\n- b\nAfter <b>x</b>'), [
+    { kind: 'paragraph', text: 'One two' },
+    { kind: 'heading', text: 'Head' },
+    { kind: 'list', items: ['a', 'b'] },
+    { kind: 'paragraph', text: 'After <b>x</b>' },
+  ]);
+});

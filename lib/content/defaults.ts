@@ -1,7 +1,8 @@
 import { products as bundledProducts } from '@/data/products';
 import { everydayHabits as bundledHabits, hubChecklists } from '@/data/safety-hub';
 import { reviewVideos } from '@/data/review-videos';
-import type { ContentDocument, HubChecklistContent, ProductEditorial, ReviewContent } from './types';
+import { starterPosts } from '@/data/blog';
+import type { BlogPost, ContentDocument, HubChecklistContent, ProductEditorial, ReviewContent } from './types';
 
 /**
  * Seed copy for the studio. The Shopify-backed fields start blank on purpose:
@@ -36,6 +37,10 @@ export function defaultHabits(): string[] {
   return [...bundledHabits];
 }
 
+export function defaultPosts(): BlogPost[] {
+  return starterPosts.map((post) => ({ ...post }));
+}
+
 /**
  * Content saved before the Shopify-override model existed carries a copy of the
  * bundled text in every field, which would read as a deliberate override and
@@ -65,6 +70,7 @@ export function hydrateContent(content: ReviewContent): ReviewContent {
     products: bundled.map((item) => edited.get(item.id) ?? item),
     checklists: content.checklists.length ? content.checklists : defaultChecklists(),
     habits: content.habits.length ? content.habits : defaultHabits(),
+    posts: content.posts?.length ? content.posts : defaultPosts(),
   };
 }
 
@@ -74,6 +80,7 @@ export const defaultContent: ReviewContent = {
   products: productEditorialFromCatalog(),
   checklists: defaultChecklists(),
   habits: defaultHabits(),
+  posts: defaultPosts(),
   testimonials: [
     { quote: 'It lives next to my keys now. I don’t have to remember to pack it separately.', name: 'Aarohi S.', detail: 'Personal SOS Alarm' },
     { quote: 'I liked that I could understand it without sitting through a tutorial.', name: 'Riya M.', detail: 'Personal SOS Alarm' },

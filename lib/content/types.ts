@@ -26,12 +26,34 @@ export type ProductEditorial = {
   compare: { job: string; reachFor: string; power: string; carry: string; caveat: string };
 };
 export type HubChecklistContent = { id: string; title: string; description: string; items: string[] };
+/**
+ * A journal post. The body is plain text: blank lines split paragraphs, a line
+ * starting "## " is a subheading and lines starting "- " form a list. Rendered
+ * as React elements, never as HTML, so nothing typed here can inject markup.
+ */
+export type BlogPost = {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  category: string;
+  author: string;
+  /** YYYY-MM-DD, shown on the post and used to order the index. */
+  date: string;
+  /** Blank shows the post without a photo. */
+  coverImage: string;
+  body: string;
+  visible: boolean;
+};
+export const BLOG_POST_LIMIT = 24;
+export const BLOG_BODY_LIMIT = 8000;
 export type ReviewContent = {
   testimonials: Testimonial[];
   videos: VideoReview[];
   products: ProductEditorial[];
   checklists: HubChecklistContent[];
   habits: string[];
+  posts: BlogPost[];
   settings: { writtenTitle: string; writtenSubtitle: string; videoTitle: string; videoSubtitle: string; showWritten: boolean; showVideos: boolean; marqueeSeconds: number };
 };
 export type ContentDocument = { revision: number; draft: ReviewContent; published: ReviewContent; updatedAt: string | null; publishedAt: string | null };
@@ -169,12 +191,41 @@ export function validateContent(input: unknown): ReviewContent {
 
   const habits = Array.isArray(source.habits) ? strings(source.habits, 'Habit', 12, 180, 6) : [];
 
+  // Absent on content saved before the blog existed; hydrateContent seeds it.
+  let posts: BlogPost[];
+  if (!Array.isArray(source.posts)) posts = [];
+  else {
+    if (source.posts.length < 1 || source.posts.length > BLOG_POST_LIMIT) throw new Error(`Keep between 1 and ${BLOG_POST_LIMIT} blog posts. Hide a post instead of deleting the last one.`);
+    posts = source.posts.map((item): BlogPost => {
+      const entry = record(item);
+      const slug = text(entry.slug, 'Post URL slug', 100);
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error('Post URL slug must be lowercase letters and numbers separated by single hyphens.');
+      const date = text(entry.date, 'Post date', 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) throw new Error('Use YYYY-MM-DD for the post date.');
+      return {
+        id: id(entry.id),
+        slug,
+        title: text(entry.title, 'Post title', 120),
+        excerpt: text(entry.excerpt, 'Post excerpt', 280),
+        category: text(entry.category, 'Post category', 40),
+        author: text(entry.author, 'Post author', 80),
+        date,
+        coverImage: typeof entry.coverImage === 'string' && entry.coverImage.trim() ? imageMedia(entry.coverImage, 'Cover photo') : '',
+        body: text(entry.body, 'Post body', BLOG_BODY_LIMIT),
+        visible: flag(entry.visible),
+      };
+    });
+    if (new Set(posts.map((item) => item.id)).size !== posts.length) throw new Error('Post IDs must be unique.');
+    if (new Set(posts.map((item) => item.slug)).size !== posts.length) throw new Error('Each post needs its own URL slug.');
+  }
+
   return {
     testimonials,
     videos,
     products,
     checklists,
     habits,
+    posts,
     settings: {
       writtenTitle: text(settings.writtenTitle, 'Written reviews heading', 160),
       writtenSubtitle: text(settings.writtenSubtitle, 'Written reviews description', 300, false),

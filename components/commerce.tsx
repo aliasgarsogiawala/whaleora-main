@@ -248,6 +248,7 @@ export function useCart() {
 const NAV_LINKS = [
   { href: '/products', label: 'Shop' },
   { href: '/safety-hub', label: 'Safety Hub' },
+  { href: '/blog', label: 'Journal' },
   { href: '/about', label: 'About' },
   { href: '/institutions', label: 'Partnerships' },
 ];
@@ -559,7 +560,7 @@ export function Footer() {
   const [policy, setPolicy] = useState<PolicyKey | null>(null);
   const groups = useMemo(() => [
     { title: 'Shop', links: [['Shop all', '/products'], ['SOS Alarm', '/products/sos-alarm'], ['Pepper Spray', '/products/pepperspray']] },
-    { title: 'Explore', links: [['Our story', '/about'], ['Safety Hub', '/safety-hub'], ['Partnerships', '/institutions']] },
+    { title: 'Explore', links: [['Our story', '/about'], ['Safety Hub', '/safety-hub'], ['Journal', '/blog'], ['Partnerships', '/institutions']] },
     { title: 'Support', links: [['Account', '/account'], ['Contact & FAQ', '/contact'], ['Shipping', '#shipping'], ['Returns', '#returns']] },
   ], []);
   return (
